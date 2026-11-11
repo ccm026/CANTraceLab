@@ -1,23 +1,24 @@
 # CANTraceLab Roadmap
 
-Estimated work is prospective and should be updated as features are completed.
+All time estimates below are for **genuine planned future work**, not completed or paid hours.
 
-## Completed foundation (Milestone 1)
-- Initial source package and CLI file loader
-- Synthetic CAN trace sample
-- First unit/integration tests
-- Python CI and lint workflow
+## Completed
 
-## Near-term milestones
-- **Milestone 2 — Desktop trace viewer (6–10 h):** Qt table, filters, import dialog, loading errors, empty states
-- **Milestone 3 — DBC decoding (6–10 h):** decode known signals, unsupported IDs, multiplexed signals, fixtures and tests
-- **Milestone 4 — Signal plotting (5–8 h):** time-series plotting, per-signal scaling and selection
-- **Milestone 5 — Timing diagnostics (6–10 h):** cycle times, jitter and missing message alerts with deterministic tests
+### Milestone 1 — Offline trace foundation
+- CLI trace loading and summary statistics
+- Synthetic sample, basic tests, Ruff and Python CI
 
-## Longer-term work
-- Large-log streaming and indexing (8–12 h)
-- Comparison of two captures and change detection (6–9 h)
-- Live CAN integration using supported adapters (8–12 h)
-- Exportable reports and advanced testing (5–8 h)
+### Milestone 2 — PySide6 trace viewer
+- Desktop frame table, filtering, sorting, error messages, and Qt tests
 
-Only keep work here if you genuinely intend to undertake it. Estimated hours are not completed or paid time.
+## Planned development
+
+- **Milestone 3 — DBC decoding (6–10 h):** decode messages, unknown IDs, multiplexed signals; fixture-based tests.
+- **Milestone 4 — Signal plotting (5–8 h):** select decoded signals, preserve timestamps, manage scaling and legends.
+- **Milestone 5 — Timing diagnostics (6–10 h):** expected periods, timing gaps, jitter, missing message reports.
+- **Large-log streaming/indexing (8–12 h):** bounded memory, asynchronous file loading, progress/cancel, performance tests.
+- **Trace comparison (6–9 h):** compare recordings, detect changed IDs and signal behavior.
+- **Live CAN acquisition (8–12 h):** supported hardware adapters, error recovery, simulation and tests.
+- **Reports and further QA (5–8 h):** export reports, test coverage, reproducible releases.
+
+Keep and revise these plans only if they reflect development you actually intend to do.
