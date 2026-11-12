@@ -1,20 +1,21 @@
 # CANTraceLab
 
-CANTraceLab is an independent Python project for inspecting offline CAN bus logs and, in future milestones, analyzing decoded automotive signals and message timing.
+CANTraceLab is an independently developed Python tool for inspecting offline CAN bus logs, filtering frames, and decoding signals using DBC definitions. It is intended for learning and automotive/embedded diagnostics workflows.
 
-## Current status — Milestone 2
+## Current status — Milestone 3
 
-- Offline `candump`/can-utils `.log` loading; `.asc` and `.blf` loading delegated to `python-can`.
-- A command-line summary of frame counts, unique identifiers and trace duration.
-- **PySide6 desktop viewer** with frame table, numeric timestamp sorting, and filters for hexadecimal CAN ID, channel and payload.
-- File import, explicit errors, a readable empty state and filtered frame counts.
-- Fabricated sample trace, automated tests, Ruff linting and GitHub Actions CI.
+- CAN log reading via `python-can` (`.log`, `.asc`, `.blf`).
+- CLI trace statistics (frame count, distinct IDs, trace duration).
+- PySide6 frame table with CAN ID, channel and payload filtering plus numeric sorting.
+- **DBC import** and a decoded-signal panel for the selected frame, showing the message name, scaled values and units.
+- Clear handling of unknown CAN IDs, wrong frame format, invalid payload sizes, and remote/error frames.
+- A synthetic DBC and CAN log, regression tests, Ruff and GitHub Actions CI.
 
-**Not yet implemented:** DBC decoding, real hardware capture, streaming large files, signal plotting and diagnostics. See [ROADMAP.md](ROADMAP.md).
+**Not yet implemented:** signal plots, cycle-time/jitter diagnostics, background indexing of large files, live CAN hardware capture. See [ROADMAP.md](ROADMAP.md).
 
-## Requirements and setup (Windows / Git Bash)
+## Setup (Windows / Git Bash)
 
-- Python 3.13, Git; no CAN adapter is required for offline logs.
+Requires Python 3.13 and Git. A CAN adapter is **not** required for offline logs.
 
 ```bash
 cd /e/Projects/CANTraceLab
@@ -24,37 +25,40 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-## Desktop application
+## Start the desktop viewer with a synthetic trace and DBC
 
 ```bash
-python -m cantracelab.gui samples/demo.log
+python -m cantracelab.gui samples/demo.log --dbc samples/demo.dbc
 ```
 
-Alternatively, run `python -m cantracelab.gui` and click **Open CAN Log…**. Enter a hexadecimal CAN ID such as `123` in the filter field; the viewer matches ID text, not decimal input. The channel and payload filters can be combined with it. Click a column heading to sort.
+Alternatively, launch the viewer alone (`python -m cantracelab.gui`), then click **Open CAN Log…** and **Load DBC…**. Click a frame in the upper table to see the decoded signals in the lower panel.
 
-## Command line
+The sample files are completely synthetic; for instance CAN ID `0x123` has a `VehicleSpeed` signal (scaled by 0.01 km/h per bit), and CAN ID `0x456` has an `EngineSpeed` signal (scaled by 0.25 rpm per bit). These values are only demonstration data.
+
+You can also run the original CLI:
 
 ```bash
 python -m cantracelab samples/demo.log
 ```
 
-Expected: 3 frames, 2 unique CAN IDs, about 0.02 seconds duration.
-
-## Tests and code quality
+## Tests and lint
 
 ```bash
 python -m pytest -q
 python -m ruff check .
 ```
 
-CI sets `QT_QPA_PLATFORM=offscreen` so GUI model and basic window tests can run headlessly. On Windows, leave this unset for normal desktop use.
+The CI workflow runs on Ubuntu with `QT_QPA_PLATFORM=offscreen` and installs the Qt Linux libraries required for PySide6. It does not require a physical CAN adapter.
 
-## Architecture
+## How the software works
 
-`python-can LogReader` → `Frame` records → `FrameTableModel` → `TraceFilterProxyModel` → `QTableView`.
+1. `python-can` parses the original log into immutable `Frame` records.
+2. `FrameTableModel` presents those records; `TraceFilterProxyModel` applies non-destructive filters and sorting.
+3. `DbcDecoder` loads a DBC file and decodes the currently selected frame using `cantools`.
+4. The decoded-signal panel displays a message name, signal names, values and units. Unknown or invalid frames remain visible in the raw table.
 
-The GUI reuses the original `trace.load_frames` logic; filters never modify the source frames.
+Milestone notes: [Milestone 1](docs/MILESTONE_1.md) · [Milestone 2](docs/MILESTONE_2.md) · [Milestone 3](docs/MILESTONE_3.md).
 
-## Licensing and data
+## License and data
 
-This repository uses the root `LICENSE` file for project code. Third-party libraries (including PySide6/Qt) have their own license conditions. Only synthetic, public, or properly licensed CAN recordings should be uploaded; do not publish employer/customer captures, DBCs or personal data.
+This project's own source is distributed under the root `LICENSE` (MIT). Dependencies such as PySide6, Qt and cantools have separate license requirements. Do not publish private employer CAN traces, proprietary DBC files or sensitive vehicle data. The included samples are fictional.
