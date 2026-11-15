@@ -9,6 +9,7 @@ Effort estimates are for **real, planned future work**, not work already complet
 - **Milestone 3 — DBC signal decoding:** DBC loading, selected-frame engineering signals, explicit error statuses, tests and demo DBC.
 - **Milestone 4 — Signal visualization:** unit-aware, interactive plots for multiple numeric DBC signals, time-aligned and isolated by CAN channel, with regression tests.
 - **Milestone 5 — Timing diagnostics:** per-channel/ID/format interval statistics, user-configured expected cycles and tolerance, early/late/possible-missing classifications, synthetic timing samples and regression tests.
+- **Milestone 6 — Usability and reliability:** readable tab styling, presentation precision for decoded numeric data, non-deprecated filtering refresh with compatibility fallback, and regression tests.
 
 ## Remaining development (planned)
 

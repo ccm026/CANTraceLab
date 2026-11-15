@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from .dbc import DbcDecoder
+from .formatting import format_signal_value
 from .frame_model import FrameTableModel, TraceFilterProxyModel
 from .plot_series import SignalKey, SignalSeries, extract_signal_series
 from .timing import analyze_timing, available_timing_keys
@@ -63,7 +64,7 @@ class TraceViewer(QMainWindow):
         heading = QLabel("CANTraceLab")
         heading.setObjectName("heading")
         subtitle = QLabel(
-            "Offline CAN trace inspection · plots and timing diagnostics (Milestone 5)"
+            "Offline CAN trace inspection · plots and timing diagnostics (Milestone 6)"
         )
         subtitle.setObjectName("subtitle")
         layout.addWidget(heading)
@@ -254,6 +255,20 @@ class TraceViewer(QMainWindow):
         QMenuBar, QMenu { background: #1f2937; }
         QGroupBox { border: 1px solid #374151; margin-top: 8px; padding: 8px; }
         QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+        QTabWidget::pane { border: 1px solid #374151; background: #111827; }
+        QTabBar::tab { background: #1f2937; color: #e5e7eb;
+                       border: 1px solid #374151; border-bottom: none;
+                       padding: 8px 14px; min-width: 105px; }
+        QTabBar::tab:selected { background: #2563eb; color: #ffffff;
+                                font-weight: bold; }
+        QTabBar::tab:hover:!selected { background: #374151; color: white; }
+        QComboBox, QDoubleSpinBox { background: #1f2937; color: #e5e7eb;
+                                    border: 1px solid #4b5563; padding: 5px; }
+        QComboBox QAbstractItemView { background: #1f2937; color: #e5e7eb;
+                                      selection-background-color: #1d4ed8; }
+        QCheckBox { color: #e5e7eb; }
+        QScrollArea { background: #111827; border: 1px solid #374151; }
+        QTableWidget::item:selected { background: #1d4ed8; color: white; }
         """)
 
     def choose_file(self):
@@ -341,7 +356,8 @@ class TraceViewer(QMainWindow):
         )
         self.signal_table.setRowCount(len(decoded.signals))
         for row, signal in enumerate(decoded.signals):
-            for col, value in enumerate((signal.name, str(signal.value), signal.unit)):
+            display_cells = (signal.name, format_signal_value(signal.value), signal.unit)
+            for col, value in enumerate(display_cells):
                 self.signal_table.setItem(row, col, QTableWidgetItem(value))
 
     def rebuild_signal_list(self) -> None:

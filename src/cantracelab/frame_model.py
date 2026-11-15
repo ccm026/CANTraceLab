@@ -28,7 +28,7 @@ class FrameTableModel(QAbstractTableModel):
     def rowCount(self, parent=QModelIndex()):   # noqa: B008
         return 0 if parent.isValid() else len(self._frames)
 
-    def columnCount(self, parent=QModelIndex()):     # noqa: B008
+    def columnCount(self, parent=QModelIndex()):   # noqa: B008
         return 0 if parent.isValid() else len(self.HEADERS)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -78,10 +78,26 @@ class TraceFilterProxyModel(QSortFilterProxyModel):
         self.setDynamicSortFilter(True)
 
     def set_filters(self, *, can_id="", channel="", payload="") -> None:
+        """Update only row filters, avoiding deprecated Qt invalidation APIs.
+
+        Qt 6.10+ provides dedicated filter-change notifications. Older supported
+        PySide6 releases still have ``invalidate()``, which updates proxy views
+        and sorting without using the deprecated ``invalidateFilter()`` call.
+        """
+        modern_filter_api = (
+            hasattr(self, "beginFilterChange")
+            and hasattr(self, "endFilterChange")
+            and hasattr(QSortFilterProxyModel, "Direction")
+        )
+        if modern_filter_api:
+            self.beginFilterChange()
         self._id_text = can_id
         self._channel_text = channel
         self._payload_text = payload
-        self.invalidateFilter()
+        if modern_filter_api:
+            self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+        else:
+            self.invalidate()
 
     def filterAcceptsRow(self, source_row, source_parent):
         source = self.sourceModel()

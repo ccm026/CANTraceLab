@@ -2,7 +2,7 @@
 
 CANTraceLab is an independently developed Python tool for inspecting offline CAN bus logs, filtering frames, and decoding signals using DBC definitions. It is intended for learning and automotive/embedded diagnostics workflows.
 
-## Current status — Milestone 5
+## Current status — Milestone 6
 
 - CAN log reading via `python-can` (`.log`, `.asc`, `.blf`).
 - CLI trace statistics (frame count, distinct IDs, trace duration).
@@ -11,6 +11,7 @@ CANTraceLab is an independently developed Python tool for inspecting offline CAN
 - Clear handling of unknown CAN IDs, wrong frame format, invalid payload sizes, and remote/error frames.
 - **Milestone 4:** interactive PyQtGraph signal trends from the entire decoded CAN trace. Multiple signals have separate, unit-specific axes, with zoom, pan, and point inspection.
 - **Milestone 5:** a dedicated Timing diagnostics tab showing measured CAN message gaps, mean/median/min/max cycle statistics, and peak jitter. Optional, user-specified expected cycle time and tolerance enable early/late and *possible missing* message diagnostics, without requiring a DBC or CAN hardware.
+- **Milestone 6:** dark-theme tab readability, display-only numeric formatting for decoded signals, and a non-deprecated filter-refresh path with compatibility fallback.
 - Synthetic DBC and CAN logs, regression tests, Ruff and GitHub Actions CI.
 
 **Not yet implemented:** persistent per-ID timing profiles, automatic DBC timing expectations, background indexing of large files, live CAN hardware capture and categorical-signal plotting. See [ROADMAP.md](ROADMAP.md).
@@ -71,6 +72,13 @@ After opening both `samples/demo.log` and `samples/demo.dbc`, CANTraceLab offers
 - Error frames, remote frames and non-finite timestamps are ignored; duplicate timestamps count as zero-length gaps, and out-of-order captures are sorted for analysis.
 - Timing analysis does not require loading a DBC or attaching CAN hardware. It does not modify the original trace or signal plots.
 
+## Milestone 6: usability and test robustness
+
+- Tabs, combo boxes and timing controls follow the dark palette; the active tab has visible contrast.
+- Decoded numeric values are presented with six significant digits (for example, `87.21000000000001` appears as `87.21`), while raw measurements and plot series keep full precision.
+- The frame filter proxy uses Qt 6.10+ `beginFilterChange` / `endFilterChange`, with `invalidate()` as a compatibility fallback on older Qt/PySide6 versions. No deprecated `invalidateFilter()` calls remain.
+- Added formatting, GUI styling and filter regression tests.
+
 ## Tests and lint
 
 ```bash
@@ -89,8 +97,12 @@ The CI workflow runs on Ubuntu with `QT_QPA_PLATFORM=offscreen` and installs the
 5. `plot_series.extract_signal_series()` builds separate numeric histories for each signal and CAN channel, and PyQtGraph displays them.
 6. `timing.available_timing_keys()` groups valid data frames by channel, CAN ID and format; `timing.analyze_timing()` creates a read-only timing report for the selected stream. The Timing diagnostics tab displays its intervals and optional expected-cycle anomalies.
 
-Milestone notes: [1](docs/MILESTONE_1.md) · [2](docs/MILESTONE_2.md) · [3](docs/MILESTONE_3.md) · [4](docs/MILESTONE_4.md) · [5](docs/MILESTONE_5.md).
+Milestone notes: [1](docs/MILESTONE_1.md) · [2](docs/MILESTONE_2.md) · [3](docs/MILESTONE_3.md) · [4](docs/MILESTONE_4.md) · [5](docs/MILESTONE_5.md) · [6](docs/MILESTONE_6.md).
 
 ## License and data
 
 This project's own source is distributed under the root `LICENSE` (MIT). Dependencies such as PySide6, Qt and cantools have separate license requirements. Do not publish private employer CAN traces, proprietary DBC files or sensitive vehicle data. The included samples are fictional.
+
+## Submission readiness
+
+See [Submission checklist](docs/SUBMISSION_CHECKLIST.md). Milestones 1–6 provide a testable working foundation; large-log indexing, trace comparison, live CAN acquisition and report export are genuinely planned work and **are not complete yet**.
