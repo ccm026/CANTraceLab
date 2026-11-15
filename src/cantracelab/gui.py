@@ -1,19 +1,23 @@
-"""Desktop CAN Trace Viewer with DBC signal plotting (Milestone 4).
+"""Desktop CAN Trace Viewer with signal plots and timing diagnostics (Milestone 5).
 
 Run with: python -m cantracelab.gui [optional trace filename] [--dbc file.dbc]
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
 import can
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QBrush, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -29,6 +33,7 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -36,6 +41,7 @@ from PySide6.QtWidgets import (
 from .dbc import DbcDecoder
 from .frame_model import FrameTableModel, TraceFilterProxyModel
 from .plot_series import SignalKey, SignalSeries, extract_signal_series
+from .timing import analyze_timing, available_timing_keys
 from .trace import load_frames, summarize
 
 
@@ -56,7 +62,9 @@ class TraceViewer(QMainWindow):
 
         heading = QLabel("CANTraceLab")
         heading.setObjectName("heading")
-        subtitle = QLabel("Offline CAN trace inspection · DBC signal plotting (Milestone 4)")
+        subtitle = QLabel(
+            "Offline CAN trace inspection · plots and timing diagnostics (Milestone 5)"
+        )
         subtitle.setObjectName("subtitle")
         layout.addWidget(heading)
         layout.addWidget(subtitle)
@@ -148,7 +156,67 @@ class TraceViewer(QMainWindow):
         self.plots_layout = QVBoxLayout(self.plots_container)
         self.plot_scroll.setWidget(self.plots_container)
         plot_group_layout.addWidget(self.plot_scroll, 1)
-        layout.addWidget(plot_group, 2)
+        # Tabs keep waveform plots and timing reports readable without compressing
+        # the existing trace table and selected-frame decoder.
+        self.analysis_tabs = QTabWidget()
+        self.analysis_tabs.addTab(plot_group, "Signal plots")
+
+        timing_tab = QWidget()
+        timing_layout = QVBoxLayout(timing_tab)
+        timing_controls = QHBoxLayout()
+        timing_controls.addWidget(QLabel("CAN stream:"))
+        self.timing_key_combo = QComboBox()
+        self.timing_key_combo.setMinimumWidth(260)
+        timing_controls.addWidget(self.timing_key_combo, 2)
+        self.timing_check = QCheckBox("Check expected cycle")
+        timing_controls.addWidget(self.timing_check)
+        self.timing_period = QDoubleSpinBox()
+        self.timing_period.setRange(0.01, 60000.0)
+        self.timing_period.setDecimals(2)
+        self.timing_period.setValue(10.0)
+        self.timing_period.setSuffix(" ms")
+        self.timing_period.setEnabled(False)
+        timing_controls.addWidget(self.timing_period)
+        timing_controls.addWidget(QLabel("Tolerance:"))
+        self.timing_tolerance = QDoubleSpinBox()
+        self.timing_tolerance.setRange(0.0, 100.0)
+        self.timing_tolerance.setDecimals(1)
+        self.timing_tolerance.setValue(20.0)
+        self.timing_tolerance.setSuffix(" %")
+        self.timing_tolerance.setEnabled(False)
+        timing_controls.addWidget(self.timing_tolerance)
+        timing_layout.addLayout(timing_controls)
+        self.timing_status = QLabel("Load a CAN log to inspect message intervals")
+        self.timing_status.setWordWrap(True)
+        timing_layout.addWidget(self.timing_status)
+        self.timing_table = QTableWidget(0, 6)
+        self.timing_table.setHorizontalHeaderLabels((
+            "Start +s", "End +s", "Gap (ms)", "Deviation (ms)",
+            "Classification", "Missing (est.)",
+        ))
+        self.timing_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.timing_table.verticalHeader().setVisible(False)
+        for col in range(6):
+            self.timing_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.timing_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Stretch
+        )
+        timing_layout.addWidget(self.timing_table, 1)
+        self.timing_note = QLabel(
+            "Missing messages are estimates from observed gaps, not proof of loss. "
+            "Select an expected cycle to enable alerts. End-of-log loss cannot be inferred."
+        )
+        self.timing_note.setWordWrap(True)
+        timing_layout.addWidget(self.timing_note)
+        self.analysis_tabs.addTab(timing_tab, "Timing diagnostics")
+        layout.addWidget(self.analysis_tabs, 2)
+        self._timing_origin = 0.0
+        self.timing_key_combo.currentIndexChanged.connect(self.update_timing)
+        self.timing_check.toggled.connect(self.update_timing)
+        self.timing_period.valueChanged.connect(self.update_timing)
+        self.timing_tolerance.valueChanged.connect(self.update_timing)
 
         self.table.selectionModel().currentRowChanged.connect(
             lambda _current, _previous: self.update_decoded()
@@ -215,6 +283,7 @@ class TraceViewer(QMainWindow):
             self.table.clearSelection()
         self.update_decoded()
         self.rebuild_signal_list()
+        self.refresh_timing_keys()
         self.statusBar().showMessage(f"Loaded {len(frames)} frames from {self.current_file.name}")
         return True
 
@@ -240,6 +309,7 @@ class TraceViewer(QMainWindow):
         self.dbc_label.setToolTip(str(self.dbc_file))
         self.update_decoded()
         self.rebuild_signal_list()
+        self.refresh_timing_keys()
         self.statusBar().showMessage(f"Loaded DBC: {self.dbc_file.name}")
         return True
 
@@ -376,6 +446,81 @@ class TraceViewer(QMainWindow):
             f"{point.y():.6g}{unit} at +{point.x():.6f} s "
             f"({key.channel or 'no channel'})"
         )
+
+    def refresh_timing_keys(self) -> None:
+        """Rebuild CAN stream choices after loading a trace, preserving selection."""
+        frames = [self.model.frame_at(i) for i in range(self.model.rowCount())]
+        selected_key = self.timing_key_combo.currentData()
+        finite = [frame.timestamp for frame in frames if math.isfinite(frame.timestamp)]
+        self._timing_origin = min(finite) if finite else 0.0
+        self.timing_key_combo.blockSignals(True)
+        self.timing_key_combo.clear()
+        for key in available_timing_keys(frames):
+            self.timing_key_combo.addItem(key.label, userData=key)
+        old_index = self.timing_key_combo.findData(selected_key)
+        if old_index >= 0:
+            self.timing_key_combo.setCurrentIndex(old_index)
+        self.timing_key_combo.blockSignals(False)
+        self.update_timing()
+
+    def update_timing(self, *_args) -> None:
+        """Present analysis of the selected stream, ignoring table display filters."""
+        self.timing_table.setRowCount(0)
+        self.timing_period.setEnabled(self.timing_check.isChecked())
+        self.timing_tolerance.setEnabled(self.timing_check.isChecked())
+        key = self.timing_key_combo.currentData()
+        if key is None:
+            self.timing_status.setText("No valid CAN data frames in the loaded trace")
+            return
+        frames = [self.model.frame_at(i) for i in range(self.model.rowCount())]
+        expected = self.timing_period.value() if self.timing_check.isChecked() else None
+        report = analyze_timing(
+            frames,
+            key,
+            expected_period_ms=expected,
+            tolerance_percent=self.timing_tolerance.value(),
+        )
+        if not report.intervals:
+            self.timing_status.setText(
+                f"{key.label} · {report.frame_count} frame(s) · "
+                "at least two frames are needed for interval statistics"
+            )
+            return
+        minimum = report.min_ms
+        maximum = report.max_ms
+        mean = report.mean_ms
+        median = report.median_ms
+        jitter = report.peak_jitter_ms
+        statistics_text = (
+            f"{key.label} · {report.frame_count} frames · "
+            f"mean {mean:.3f} ms · median {median:.3f} ms · "
+            f"min/max {minimum:.3f}/{maximum:.3f} ms · "
+            f"peak deviation {jitter:.3f} ms"
+        )
+        if expected is None:
+            statistics_text += " · No cycle threshold set: no anomaly classification"
+        else:
+            statistics_text += (
+                f" · expected {expected:.2f} ms ±{report.tolerance_percent:.1f}% "
+                f"· {report.alert_count} alerts · "
+                f"{report.estimated_missing} possibly missing frames"
+            )
+        self.timing_status.setText(statistics_text)
+        self.timing_table.setRowCount(len(report.intervals))
+        for row, item in enumerate(report.intervals):
+            cells = (
+                f"{item.start_timestamp_s - self._timing_origin:.6f}",
+                f"{item.end_timestamp_s - self._timing_origin:.6f}",
+                f"{item.duration_ms:.3f}",
+                f"{item.deviation_ms:+.3f}" if item.deviation_ms is not None else "—",
+                item.status,
+                str(item.estimated_missing) if expected is not None else "—",
+            )
+            for col, value in enumerate(cells):
+                cell = QTableWidgetItem(value)
+                if item.status in {"early", "late", "possible missing"} and col in (4, 5):
+                    cell.setForeground(QBrush(QColor("#fca5a5")))
+                self.timing_table.setItem(row, col, cell)
 
     def apply_filters(self):
         self.proxy.set_filters(
